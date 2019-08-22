@@ -352,6 +352,24 @@ Disregarding the orientation (using the pose2's)."
      :y-offset (cl-transforms:y translation-to-middle)
      :z-offset (cl-transforms:z translation-to-middle))))
 
+(defun make-poses-reachable-distance-cost-function (poses min-dist max-dist)
+  (lambda (x y)
+    ;; for every pose check if (x y) is outside of min and max dist
+    (if (remove T (mapcar (lambda (pose) (< min-dist
+                                            (cl-transforms:v-dist
+                                             (cl-transforms:make-3d-vector x y 0)
+                                             (cl-transforms:make-3d-vector (cl-transforms:x
+                                                                            (cl-transforms:origin
+                                                                             pose))
+                                                                           (cl-transforms:y
+                                                                            (cl-transforms:origin
+                                                                             pose))
+                                                                           0))
+                                            max-dist))
+                          poses))
+        0
+        1)))
+
 (defmethod costmap:costmap-generator-name->score
     ((name (eql 'poses-reachable-cost-function))) 10)
 
@@ -370,7 +388,6 @@ Disregarding the orientation (using the pose2's)."
 (defmethod costmap:costmap-generator-name->score
     ((name (eql 'opened-door-for-opposite-arm-cost-function))) 10)
 
-
 (def-fact-group environment-manipulation-costmap (costmap:desig-costmap)
   (<- (costmap:desig-costmap ?designator ?costmap)
     (cram-robot-interfaces:reachability-designator ?designator)
@@ -381,12 +398,14 @@ Disregarding the orientation (using the pose2's)."
     (spec:property ?container-designator (:part-of ?btr-environment))
     (spec:property ?designator (:arm ?arm))
     (costmap:costmap ?costmap)
-    ;; reachability gaussian costmap
+    
+    ;; reachabilty costmap
+    (costmap:costmap-reach-minimal-distance ?minimal-distance)
+    (costmap:costmap-in-reach-distance ?maximal-distance)
     (lisp-fun get-handle-min-max-pose ?container-name ?btr-environment ?poses)
-    (lisp-fun costmap:2d-pose-covariance ?poses 0.05 (?mean ?covariance))
     (costmap:costmap-add-function
      container-handle-reachable-cost-function
-     (costmap:make-gauss-cost-function ?mean ?covariance)
+     (make-poses-reachable-distance-cost-function ?poses ?minimal-distance ?maximal-distance)
      ?costmap)
     ;; cutting out drawer costmap
     (costmap:costmap-manipulation-padding ?padding)
@@ -423,15 +442,13 @@ Disregarding the orientation (using the pose2's)."
     (spec:property ?designator (:arm ?arm))
     (costmap:costmap ?costmap)
 
-    ;; reachability gaussian costmap
-    (lisp-fun get-handle-min-max-pose ?container-name ?btr-environment (?min-pose ?max-pose))
-    (lisp-fun middle-pose ?min-pose ?max-pose ?middle-pose)
-    ;; TODO(cpo): If you can, please beautifiy this.
-    (equal (?middle-pose) ?poses)
-    (lisp-fun costmap:2d-pose-covariance ?poses 0.05 (?mean ?covariance))
+    ;; reachability costmap
+    (costmap:costmap-reach-minimal-distance ?minimal-distance)
+    (costmap:costmap-in-reach-distance ?maximal-distance)
+    (lisp-fun get-handle-min-max-pose ?container-name ?btr-environment ?poses)
     (costmap:costmap-add-function
      container-handle-reachable-cost-function
-     (costmap:make-gauss-cost-function ?mean ?covariance)
+     (make-poses-reachable-distance-cost-function ?poses ?minimal-distance ?maximal-distance)
      ?costmap)
 
     ;; cutting out door costmap
